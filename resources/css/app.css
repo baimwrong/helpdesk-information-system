@@ -1,0 +1,243 @@
+/* Enterprise Help Desk Custom Theme */
+:root {
+    --hd-primary: #1e3a8a;
+    --hd-primary-hover: #1e40af;
+    --hd-sidebar-bg: #0f172a;
+    --hd-sidebar-color: #94a3b8;
+    --hd-sidebar-active: #38bdf8;
+    --hd-sidebar-hover: #1e293b;
+    --hd-bg-light: #f8fafc;
+    --hd-border: #e2e8f0;
+}
+
+body {
+    background-color: var(--hd-bg-light);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #1e293b;
+    min-height: 100vh;
+}
+
+/* Sidebar Styles */
+.hd-sidebar {
+    width: 260px;
+    background-color: var(--hd-sidebar-bg);
+    min-height: 100vh;
+    color: var(--hd-sidebar-color);
+    transition: all 0.3s ease;
+    z-index: 1000;
+}
+
+.hd-sidebar .brand-title {
+    color: #ffffff;
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+}
+
+.hd-sidebar .nav-link {
+    color: var(--hd-sidebar-color);
+    padding: 0.65rem 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 0.25rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.hd-sidebar .nav-link:hover {
+    background-color: var(--hd-sidebar-hover);
+    color: #f1f5f9;
+}
+
+.hd-sidebar .nav-link.active {
+    background-color: #1e293b;
+    color: #38bdf8;
+    box-shadow: inset 3px 0 0 #38bdf8;
+    font-weight: 600;
+}
+
+.hd-sidebar .nav-section-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    font-weight: 700;
+    margin: 1.25rem 0 0.5rem 0.5rem;
+}
+
+/* Main Content Area */
+.hd-main-wrapper {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.hd-topbar {
+    background-color: #ffffff;
+    border-bottom: 1px solid var(--hd-border);
+    padding: 0.75rem 1.5rem;
+}
+
+.hd-content {
+    padding: 1.5rem;
+    flex: 1;
+}
+
+/* Status and Priority Badges */
+.badge-status-open {
+    background-color: #e0f2fe;
+    color: #0369a1;
+    border: 1px solid #bae6fd;
+}
+
+.badge-status-in_progress {
+    background-color: #fef3c7;
+    color: #b45309;
+    border: 1px solid #fde68a;
+}
+
+.badge-status-pending {
+    background-color: #ffedd5;
+    color: #c2410c;
+    border: 1px solid #fed7aa;
+}
+
+.badge-status-resolved {
+    background-color: #dcfce7;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+}
+
+.badge-status-closed {
+    background-color: #f1f5f9;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+}
+
+.badge-priority-low {
+    background-color: #f1f5f9;
+    color: #475569;
+}
+
+.badge-priority-medium {
+    background-color: #dbeafe;
+    color: #1d4ed8;
+}
+
+.badge-priority-high {
+    background-color: #fed7aa;
+    color: #c2410c;
+}
+
+.badge-priority-urgent {
+    background-color: #fee2e2;
+    color: #b91c1c;
+    font-weight: 700;
+}
+
+/* Stat Cards */
+.stat-card {
+    background: #ffffff;
+    border-radius: 0.75rem;
+    border: 1px solid var(--hd-border);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    padding: 1.25rem;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.06), 0 2px 4px -1px rgba(0,0,0,0.04);
+}
+
+.stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+}
+
+/* Ticket Conversation Bubbles */
+.chat-bubble {
+    border-radius: 0.75rem;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--hd-border);
+}
+
+.chat-bubble-customer {
+    background-color: #ffffff;
+    border-left: 4px solid #3b82f6;
+}
+
+.chat-bubble-agent {
+    background-color: #f8fafc;
+    border-left: 4px solid #10b981;
+}
+
+.chat-bubble-internal {
+    background-color: #fffbeb;
+    border: 1px dashed #f59e0b;
+    border-left: 4px solid #f59e0b;
+}
+
+/* Knowledge Base Styling */
+.kb-hero {
+    background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%);
+    color: #ffffff;
+    padding: 3rem 1.5rem;
+    border-radius: 1rem;
+}
+
+.kb-card {
+    background: #ffffff;
+    border: 1px solid var(--hd-border);
+    border-radius: 0.75rem;
+    transition: all 0.2s ease;
+    height: 100%;
+}
+
+.kb-card:hover {
+    border-color: #93c5fd;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+/* Table Enhancements */
+.table-custom th {
+    background-color: #f8fafc;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    border-top: none;
+}
+
+.table-custom td {
+    vertical-align: middle;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
