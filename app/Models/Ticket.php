@@ -109,6 +109,16 @@ class Ticket extends Model
         return $this->hasMany(TicketActivity::class)->latest();
     }
 
+    public function statusEnum(): \App\Enums\TicketStatus
+    {
+        return \App\Enums\TicketStatus::tryFrom($this->status) ?? \App\Enums\TicketStatus::Open;
+    }
+
+    public function priorityEnum(): \App\Enums\TicketPriority
+    {
+        return \App\Enums\TicketPriority::tryFrom($this->priority) ?? \App\Enums\TicketPriority::Medium;
+    }
+
     public function isOpen(): bool
     {
         return in_array($this->status, [self::STATUS_OPEN, self::STATUS_IN_PROGRESS, self::STATUS_PENDING], true);
@@ -158,17 +168,35 @@ class Ticket extends Model
     public static function generateTicketNumber(): string
     {
         $prefix = 'HD-'.date('Ym').'-';
-        $latest = static::where('ticket_number', 'LIKE', $prefix.'%')
-            ->orderByDesc('id')
-            ->value('ticket_number');
 
-        if ($latest) {
-            $lastNumber = (int) substr($latest, strlen($prefix));
-            $next = str_pad((string) ($lastNumber + 1), 4, '0', STR_PAD_LEFT);
-        } else {
-            $next = '0001';
+        try {
+            for ($attempt = 0; $attempt < 5; $attempt++) {
+                $latest = static::where('ticket_number', 'LIKE', $prefix.'%')
+                    ->orderByDesc('id')
+                    ->value('ticket_number');
+
+                if ($latest) {
+                    $lastNumber = (int) substr($latest, strlen($prefix), 4);
+                    $next = str_pad((string) ($lastNumber + 1), 4, '0', STR_PAD_LEFT);
+                } else {
+                    $next = '0001';
+                }
+
+                $candidate = $prefix.$next;
+                if (! static::where('ticket_number', $candidate)->exists()) {
+                    return $candidate;
+                }
+
+                // High concurrency collision fallback
+                $candidateWithEntropy = $prefix.$next.'-'.strtoupper(\Illuminate\Support\Str::random(3));
+                if (! static::where('ticket_number', $candidateWithEntropy)->exists()) {
+                    return $candidateWithEntropy;
+                }
+            }
+
+            return $prefix.strtoupper(\Illuminate\Support\Str::random(6));
+        } catch (\Throwable) {
+            return $prefix.str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT);
         }
-
-        return $prefix.$next;
     }
 }

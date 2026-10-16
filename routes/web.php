@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 // Authentication Routes
-Route::middleware('guest')->group(function () {
+Route::middleware(['guest', 'throttle:10,1'])->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
     Route::post('/login', [AuthController::class, 'login']);
     Route::get('/register', [AuthController::class, 'showRegister'])->name('register');
@@ -32,7 +32,7 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout')->middl
 // Knowledge Base Public / Member Portal
 Route::get('/kb', [KnowledgeBaseController::class, 'index'])->name('kb.index');
 Route::get('/kb/{slug}', [KnowledgeBaseController::class, 'show'])->name('kb.show');
-Route::post('/kb/{article}/vote', [KnowledgeBaseController::class, 'vote'])->name('kb.vote');
+Route::post('/kb/{article}/vote', [KnowledgeBaseController::class, 'vote'])->name('kb.vote')->middleware('throttle:30,1');
 
 // Authenticated Application Area
 Route::middleware('auth')->group(function () {
@@ -48,6 +48,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/tickets/create', [TicketController::class, 'create'])->name('tickets.create');
     Route::post('/tickets', [TicketController::class, 'store'])->name('tickets.store');
     Route::get('/tickets/{ticket}', [TicketController::class, 'show'])->name('tickets.show');
+    Route::get('/tickets/{ticket}/attachments/{attachment}', [TicketController::class, 'downloadAttachment'])->name('tickets.attachments.download');
     Route::post('/tickets/{ticket}/reply', [TicketController::class, 'reply'])->name('tickets.reply');
     Route::post('/tickets/{ticket}/rate', [TicketController::class, 'rate'])->name('tickets.rate');
 
@@ -65,6 +66,11 @@ Route::middleware('auth')->group(function () {
         Route::get('/kb-manage/{article}/edit', [KnowledgeBaseController::class, 'edit'])->name('kb.edit');
         Route::put('/kb-manage/{article}', [KnowledgeBaseController::class, 'update'])->name('kb.update');
         Route::delete('/kb-manage/{article}', [KnowledgeBaseController::class, 'destroy'])->name('kb.destroy');
+
+        // Canned Responses Management for Staff
+        Route::prefix('admin')->name('admin.')->group(function () {
+            Route::resource('canned', CannedResponseController::class)->except(['show']);
+        });
     });
 
     // Administrator Suite (Admin only)
@@ -79,19 +85,16 @@ Route::middleware('auth')->group(function () {
         Route::get('/reports/export', [ReportController::class, 'exportCsv'])->name('reports.export');
 
         // User Management
-        Route::resource('users', UserController::class);
+        Route::resource('users', UserController::class)->except(['show', 'destroy']);
         Route::patch('/users/{user}/toggle', [UserController::class, 'toggleStatus'])->name('users.toggle');
 
         // Departments Management
-        Route::resource('departments', DepartmentController::class);
+        Route::resource('departments', DepartmentController::class)->except(['show']);
 
         // Categories Management
-        Route::resource('categories', CategoryController::class);
+        Route::resource('categories', CategoryController::class)->except(['show']);
 
         // SLA Policies Management
-        Route::resource('sla', SlaPlanController::class);
-
-        // Canned Responses Management
-        Route::resource('canned', CannedResponseController::class);
+        Route::resource('sla', SlaPlanController::class)->except(['show']);
     });
 });

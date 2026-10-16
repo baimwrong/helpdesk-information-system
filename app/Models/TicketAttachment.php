@@ -51,6 +51,10 @@ class TicketAttachment extends Model
 
     public function getUrlAttribute(): string
     {
+        if ($this->ticket_id) {
+            return route('tickets.attachments.download', [$this->ticket_id, $this->id]);
+        }
+
         return Storage::url($this->file_path);
     }
 

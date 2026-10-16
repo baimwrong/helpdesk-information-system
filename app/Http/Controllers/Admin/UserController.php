@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class UserController extends Controller
@@ -82,7 +83,7 @@ class UserController extends Controller
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,'.$user->id],
+            'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
             'password' => ['nullable', 'string', 'min:8'],
             'role' => ['required', 'in:admin,agent,customer'],
             'department_id' => ['nullable', 'exists:departments,id'],
@@ -90,13 +91,23 @@ class UserController extends Controller
             'is_active' => ['boolean'],
         ]);
 
+        // Prevent admin from demoting or deactivating their own account
+        if ($user->id === auth()->id()) {
+            if ($validated['role'] !== User::ROLE_ADMIN) {
+                return back()->withInput()->withErrors(['role' => 'You cannot change your own administrator role.']);
+            }
+            if (! $request->boolean('is_active', true)) {
+                return back()->withInput()->withErrors(['is_active' => 'You cannot deactivate your own account.']);
+            }
+        }
+
         $data = [
             'name' => $validated['name'],
             'email' => $validated['email'],
             'role' => $validated['role'],
             'department_id' => $validated['department_id'] ?? null,
             'phone' => $validated['phone'] ?? null,
-            'is_active' => $request->boolean('is_active'),
+            'is_active' => $user->id === auth()->id() ? true : $request->boolean('is_active'),
         ];
 
         if (! empty($validated['password'])) {

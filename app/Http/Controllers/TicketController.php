@@ -16,7 +16,11 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class TicketController extends Controller
 {
@@ -93,7 +97,7 @@ class TicketController extends Controller
     public function create(): View
     {
         $departments = Department::where('is_active', true)->orderBy('name')->get();
-        $categories = Category::where('is_active', true)->orderBy('name')->get();
+        $categories = Category::with('department')->where('is_active', true)->orderBy('name')->get();
 
         return view('tickets.create', compact('departments', 'categories'));
     }
@@ -136,10 +140,10 @@ class TicketController extends Controller
                 'resolution_due_at' => $resolutionDue,
             ]);
 
-            // Save attachments
+            // Save attachments to private storage
             if ($request->hasFile('attachments')) {
                 foreach ($request->file('attachments') as $file) {
-                    $path = $file->store('attachments/'.$ticket->id, 'public');
+                    $path = $file->store('attachments/'.$ticket->id, 'local');
                     TicketAttachment::create([
                         'ticket_id' => $ticket->id,
                         'ticket_reply_id' => null,
@@ -160,9 +164,33 @@ class TicketController extends Controller
                 ->with('success', "Ticket {$ticket->ticket_number} created successfully.");
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error('Failed to create ticket: '.$e->getMessage(), ['exception' => $e]);
 
-            return back()->withInput()->withErrors(['error' => 'Failed to create ticket: '.$e->getMessage()]);
+            return back()->withInput()->withErrors(['error' => 'Failed to create ticket. Please check your input or contact technical support.']);
         }
+    }
+
+    /**
+     * Download an authorized ticket attachment.
+     */
+    public function downloadAttachment(Ticket $ticket, TicketAttachment $attachment): BinaryFileResponse
+    {
+        $user = Auth::user();
+
+        if (! $user->isStaff() && $ticket->user_id !== $user->id) {
+            abort(403, 'You do not have permission to download this attachment.');
+        }
+
+        if ($attachment->ticket_id !== $ticket->id) {
+            abort(404);
+        }
+
+        $disk = Storage::disk('local')->exists($attachment->file_path) ? 'local' : 'public';
+        if (! Storage::disk($disk)->exists($attachment->file_path)) {
+            abort(404, 'Attachment file not found.');
+        }
+
+        return response()->download(Storage::disk($disk)->path($attachment->file_path), $attachment->file_name);
     }
 
     /**
@@ -232,10 +260,10 @@ class TicketController extends Controller
                 'is_internal_note' => false,
             ]);
 
-            // Save attachments
+            // Save attachments to private storage
             if ($request->hasFile('attachments')) {
                 foreach ($request->file('attachments') as $file) {
-                    $path = $file->store('attachments/'.$ticket->id, 'public');
+                    $path = $file->store('attachments/'.$ticket->id, 'local');
                     TicketAttachment::create([
                         'ticket_id' => $ticket->id,
                         'ticket_reply_id' => $reply->id,
@@ -253,9 +281,17 @@ class TicketController extends Controller
                 $ticket->update(['first_responded_at' => now()]);
             }
 
-            // If ticket was resolved or closed and customer replies, reopen it
+            // If ticket was resolved or closed and customer replies, reopen it and reset resolution timestamps
             if ($user->isCustomer() && in_array($ticket->status, [Ticket::STATUS_RESOLVED, Ticket::STATUS_CLOSED], true)) {
-                $ticket->update(['status' => Ticket::STATUS_OPEN]);
+                $sla = $ticket->slaPlan ?? SlaPlan::where('priority', $ticket->priority)->where('is_active', true)->first();
+                $resolutionDue = $sla ? Carbon::now()->addHours($sla->resolution_time_hours) : Carbon::now()->addHours(48);
+
+                $ticket->update([
+                    'status' => Ticket::STATUS_OPEN,
+                    'resolved_at' => null,
+                    'closed_at' => null,
+                    'resolution_due_at' => $resolutionDue,
+                ]);
                 TicketActivity::log($ticket->id, $user->id, 'reopened', 'Ticket reopened by customer reply');
             }
 
@@ -266,8 +302,9 @@ class TicketController extends Controller
             return back()->with('success', 'Your reply has been posted.');
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error('Failed to post reply: '.$e->getMessage(), ['exception' => $e]);
 
-            return back()->withErrors(['error' => 'Failed to post reply: '.$e->getMessage()]);
+            return back()->withErrors(['error' => 'Failed to post reply. Please try again.']);
         }
     }
 
@@ -315,11 +352,13 @@ class TicketController extends Controller
         $newStatus = $validated['status'];
 
         $updates = ['status' => $newStatus];
-        if ($newStatus === Ticket::STATUS_RESOLVED && ! $ticket->resolved_at) {
+        if ($newStatus === Ticket::STATUS_RESOLVED) {
             $updates['resolved_at'] = now();
-        }
-        if ($newStatus === Ticket::STATUS_CLOSED && ! $ticket->closed_at) {
+        } elseif ($newStatus === Ticket::STATUS_CLOSED) {
             $updates['closed_at'] = now();
+        } elseif (in_array($newStatus, [Ticket::STATUS_OPEN, Ticket::STATUS_IN_PROGRESS, Ticket::STATUS_PENDING], true)) {
+            $updates['resolved_at'] = null;
+            $updates['closed_at'] = null;
         }
 
         $ticket->update($updates);
@@ -345,7 +384,11 @@ class TicketController extends Controller
         }
 
         $validated = $request->validate([
-            'assigned_to_id' => ['nullable', 'exists:users,id'],
+            'assigned_to_id' => [
+                'nullable',
+                'exists:users,id',
+                Rule::exists('users', 'id')->where(fn ($q) => $q->whereIn('role', [User::ROLE_ADMIN, User::ROLE_AGENT])),
+            ],
         ]);
 
         $newAssigneeId = $validated['assigned_to_id'];
@@ -407,6 +450,8 @@ class TicketController extends Controller
         if ($ticket->user_id !== $user->id) {
             abort(403);
         }
+
+        abort_unless(in_array($ticket->status, [Ticket::STATUS_RESOLVED, Ticket::STATUS_CLOSED], true), 400, 'Ticket must be resolved or closed before submitting a rating.');
 
         $validated = $request->validate([
             'satisfaction_rating' => ['required', 'integer', 'between:1,5'],

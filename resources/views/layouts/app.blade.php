@@ -16,7 +16,6 @@
 
     <!-- Local Chart.js for Analytics -->
     <script src="{{ asset('vendor/chartjs/chart.umd.js') }}"></script>
-    <script src="{{ asset('vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
 </head>
 <body>
 <div class="d-flex">

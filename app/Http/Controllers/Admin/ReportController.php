@@ -8,8 +8,8 @@ use App\Models\Ticket;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ReportController extends Controller
 {
@@ -64,33 +64,38 @@ class ReportController extends Controller
             }
         }])->get();
 
-        // Agent performance
-        $agents = User::whereIn('role', [User::ROLE_ADMIN, User::ROLE_AGENT])
+        // Agent performance with bulk aggregates (solves N+1 query problem)
+        $resolvedCounts = Ticket::selectRaw('assigned_to_id, count(*) as count')
+            ->whereIn('status', [Ticket::STATUS_RESOLVED, Ticket::STATUS_CLOSED])
+            ->when($fromDate, fn ($q) => $q->where('created_at', '>=', $fromDate))
+            ->whereNotNull('assigned_to_id')
+            ->groupBy('assigned_to_id')
+            ->pluck('count', 'assigned_to_id');
+
+        $avgRatings = Ticket::selectRaw('assigned_to_id, avg(satisfaction_rating) as avg_rating')
+            ->whereNotNull('satisfaction_rating')
+            ->when($fromDate, fn ($q) => $q->where('created_at', '>=', $fromDate))
+            ->whereNotNull('assigned_to_id')
+            ->groupBy('assigned_to_id')
+            ->pluck('avg_rating', 'assigned_to_id');
+
+        $agents = User::with('department')
+            ->whereIn('role', [User::ROLE_ADMIN, User::ROLE_AGENT])
             ->withCount(['assignedTickets' => function ($q) use ($fromDate) {
                 if ($fromDate) {
                     $q->where('created_at', '>=', $fromDate);
                 }
             }])
             ->get()
-            ->map(function ($agent) use ($fromDate) {
-                $resolvedCount = Ticket::where('assigned_to_id', $agent->id)
-                    ->whereIn('status', [Ticket::STATUS_RESOLVED, Ticket::STATUS_CLOSED])
-                    ->when($fromDate, fn ($q) => $q->where('created_at', '>=', $fromDate))
-                    ->count();
-
-                $avgAgentCsat = Ticket::where('assigned_to_id', $agent->id)
-                    ->whereNotNull('satisfaction_rating')
-                    ->when($fromDate, fn ($q) => $q->where('created_at', '>=', $fromDate))
-                    ->avg('satisfaction_rating') ?? 0;
-
+            ->map(function ($agent) use ($resolvedCounts, $avgRatings) {
                 return [
                     'id' => $agent->id,
                     'name' => $agent->name,
                     'email' => $agent->email,
                     'department' => $agent->department?->name ?? 'Global',
                     'assigned_count' => $agent->assigned_tickets_count,
-                    'resolved_count' => $resolvedCount,
-                    'avg_rating' => round($avgAgentCsat, 1),
+                    'resolved_count' => (int) ($resolvedCounts[$agent->id] ?? 0),
+                    'avg_rating' => round((float) ($avgRatings[$agent->id] ?? 0), 1),
                 ];
             });
 
@@ -109,32 +114,72 @@ class ReportController extends Controller
     }
 
     /**
-     * Export ticket summary report as CSV.
+     * Export ticket summary report as streamed CSV with injection protection.
      */
-    public function exportCsv(Request $request): Response
+    public function exportCsv(Request $request): StreamedResponse
     {
-        $tickets = Ticket::with(['user', 'assignedTo', 'department', 'category', 'slaPlan'])
-            ->latest()
-            ->get();
-
-        $csv = "Ticket Number,Subject,Customer Name,Customer Email,Department,Category,Priority,Status,Assigned Agent,Created At,Resolved At,Rating\n";
-
-        foreach ($tickets as $t) {
-            $customerName = str_replace('"', '""', $t->user?->name ?? '');
-            $customerEmail = str_replace('"', '""', $t->user?->email ?? '');
-            $subject = str_replace('"', '""', $t->subject);
-            $dept = str_replace('"', '""', $t->department?->name ?? '');
-            $cat = str_replace('"', '""', $t->category?->name ?? '');
-            $agent = str_replace('"', '""', $t->assignedTo?->name ?? 'Unassigned');
-
-            $csv .= "\"{$t->ticket_number}\",\"{$subject}\",\"{$customerName}\",\"{$customerEmail}\",\"{$dept}\",\"{$cat}\",\"{$t->priority}\",\"{$t->status}\",\"{$agent}\",\"{$t->created_at}\",\"{$t->resolved_at}\",\"{$t->satisfaction_rating}\"\n";
-        }
-
         $filename = 'helpdesk_tickets_export_'.date('Ymd_His').'.csv';
 
-        return response($csv, 200, [
-            'Content-Type' => 'text/csv',
+        $headers = [
+            'Content-Type' => 'text/csv; charset=UTF-8',
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
-        ]);
+        ];
+
+        return response()->stream(function () {
+            $handle = fopen('php://output', 'w');
+
+            // UTF-8 BOM for Microsoft Excel compatibility
+            fputs($handle, "\xEF\xBB\xBF");
+
+            fputcsv($handle, [
+                'Ticket Number',
+                'Subject',
+                'Customer Name',
+                'Customer Email',
+                'Department',
+                'Category',
+                'Priority',
+                'Status',
+                'Assigned Agent',
+                'Created At',
+                'Resolved At',
+                'Rating',
+            ]);
+
+            Ticket::with(['user', 'assignedTo', 'department', 'category'])
+                ->latest()
+                ->chunk(250, function ($tickets) use ($handle) {
+                    foreach ($tickets as $t) {
+                        $sanitize = function (?string $val): string {
+                            if ($val === null) {
+                                return '';
+                            }
+                            // Neutralize CSV formula injection
+                            if (in_array(substr($val, 0, 1), ['=', '+', '-', '@'], true)) {
+                                return "'".$val;
+                            }
+
+                            return $val;
+                        };
+
+                        fputcsv($handle, [
+                            $sanitize($t->ticket_number),
+                            $sanitize($t->subject),
+                            $sanitize($t->user?->name),
+                            $sanitize($t->user?->email),
+                            $sanitize($t->department?->name),
+                            $sanitize($t->category?->name),
+                            $t->priority,
+                            $t->status,
+                            $sanitize($t->assignedTo?->name ?? 'Unassigned'),
+                            (string) $t->created_at,
+                            (string) $t->resolved_at,
+                            (string) $t->satisfaction_rating,
+                        ]);
+                    }
+                });
+
+            fclose($handle);
+        }, 200, $headers);
     }
 }

@@ -61,7 +61,7 @@
                             </span>
                             <div class="d-flex flex-wrap gap-2">
                                 @foreach($ticket->attachments->whereNull('ticket_reply_id') as $att)
-                                    <a href="{{ Storage::url($att->file_path) }}" target="_blank" class="btn btn-sm btn-light border d-inline-flex align-items-center gap-2 text-decoration-none">
+                                    <a href="{{ route('tickets.attachments.download', [$ticket, $att]) }}" class="btn btn-sm btn-light border d-inline-flex align-items-center gap-2 text-decoration-none">
                                         <i class="fa-solid fa-file text-primary"></i>
                                         <span class="text-truncate" style="max-width: 180px;">{{ $att->file_name }}</span>
                                         <span class="badge bg-secondary text-white">{{ $att->formatted_size }}</span>
@@ -117,7 +117,7 @@
                                 <div class="mt-3 pt-2 border-top">
                                     <div class="d-flex flex-wrap gap-2">
                                         @foreach($reply->attachments as $rAtt)
-                                            <a href="{{ Storage::url($rAtt->file_path) }}" target="_blank" class="btn btn-sm btn-white bg-white border d-inline-flex align-items-center gap-2 text-decoration-none">
+                                            <a href="{{ route('tickets.attachments.download', [$ticket, $rAtt]) }}" class="btn btn-sm btn-white bg-white border d-inline-flex align-items-center gap-2 text-decoration-none">
                                                 <i class="fa-solid fa-file text-primary"></i>
                                                 <span class="text-truncate" style="max-width: 160px;">{{ $rAtt->file_name }}</span>
                                                 <span class="badge bg-secondary text-white">{{ $rAtt->formatted_size }}</span>

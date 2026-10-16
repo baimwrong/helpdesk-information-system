@@ -44,8 +44,8 @@
                                 <select name="category_id" id="category_id" class="form-select @error('category_id') is-invalid @enderror">
                                     <option value="">-- Optional / General Category --</option>
                                     @foreach($categories as $cat)
-                                        <option value="{{ $cat->id }}" {{ old('category_id') == $cat->id ? 'selected' : '' }}>
-                                            {{ $cat->name }} ({{ $cat->department?->name ?? 'General' }})
+                                        <option value="{{ $cat->id }}" data-department-id="{{ $cat->department_id ?? '' }}" {{ old('category_id') == $cat->id ? 'selected' : '' }}>
+                                            {{ $cat->name }} {{ $cat->department ? '(' . $cat->department->name . ')' : '' }}
                                         </option>
                                     @endforeach
                                 </select>
@@ -136,3 +136,40 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const deptSelect = document.getElementById('department_id');
+    const catSelect = document.getElementById('category_id');
+    if (!deptSelect || !catSelect) return;
+
+    function filterCategories() {
+        const selectedDept = deptSelect.value;
+        const options = catSelect.querySelectorAll('option');
+
+        let hasSelectedVisible = false;
+        options.forEach(opt => {
+            if (!opt.value) {
+                opt.hidden = false;
+                return;
+            }
+
+            const optDept = opt.getAttribute('data-department-id');
+            const match = !selectedDept || !optDept || optDept === selectedDept;
+            opt.hidden = !match;
+            if (match && opt.selected) {
+                hasSelectedVisible = true;
+            }
+        });
+
+        if (!hasSelectedVisible && catSelect.value) {
+            catSelect.value = '';
+        }
+    }
+
+    deptSelect.addEventListener('change', filterCategories);
+    filterCategories();
+});
+</script>
+@endpush

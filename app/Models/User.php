@@ -60,6 +60,11 @@ class User extends Authenticatable
         ];
     }
 
+    public function roleEnum(): \App\Enums\UserRole
+    {
+        return \App\Enums\UserRole::tryFrom($this->role) ?? \App\Enums\UserRole::Customer;
+    }
+
     /**
      * Check if user has admin role.
      */
